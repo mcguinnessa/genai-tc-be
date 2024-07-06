@@ -1,8 +1,0 @@
-{
-  "model": "amazon.titan-text-express-v1",
-  "temperature": 0.9,
-  "maxTokenCount": 100,
-  "topP": 0.9,
-  "prompt": "generate 2 test cases for HLR focussing on Backup and Restore in XML format"
- 
-}

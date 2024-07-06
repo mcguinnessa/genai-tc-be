@@ -1,5 +1,6 @@
 
 import os
+from uuid import uuid4
 
 #Flask Imports
 from flask import Flask
@@ -19,12 +20,14 @@ from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains import create_retrieval_chain
 
 
-
-
-
-
 #AWS Imports
 import boto3
+
+TEMPERATURE_IDX = 0
+MAX_TOKENS_IDX  = 1
+TOP_P_IDX       = 2
+MODEL_DETAILS = {"amazon.titan-text-express-v1": ["temperature", "maxTokenCount", "topP"], 
+                 "mistral.mixtral-8x7b-instruct-v0:1": ["temperature", "max_tokens", "top_p"] }
 
 TC_DEFINITION = """A Test Case is defined as having the following fields:
 
@@ -37,16 +40,14 @@ Steps: This is a series of at least 3 steps, more if needed, that clearly descri
 Expected Results: This describes the expected outcomes for each of the steps itemised in Test Steps, including any values that can be validated or any expected errors that will occur."""
 
 
-
-
 EMBEDDINGS_MODEL = "amazon.titan-embed-text-v2:0"
 FAISS_INDEX = "faiss_db_index"
-
 
 BEDROCK_RT = boto3.client(service_name='bedrock-runtime')
 EMBEDDINGS = BedrockEmbeddings(model_id=EMBEDDINGS_MODEL, client=BEDROCK_RT)
 
-
+ALLOWED_WORD_EXTENSIONS = {'docx'}
+ALLOWED_PFD_EXTENSIONS = {'pdf'}
 
 def create_app(test_config=None):
    """Create the App"""
@@ -57,29 +58,42 @@ def create_app(test_config=None):
    def hello_world():
       return "<p>Hello, World!</p>"
 
+   #################################################################################
+   #
+   # Responds to the heath check
+   #
+   #################################################################################
    @app.route("/health")
    def health():
       return "<p>OK</p>"
 
+   #################################################################################
+   #
+   # Generate the test cases
+   #
+   #################################################################################
    @app.post("/generate")
    def generate():
-      print("This is a query")
+      print("This is a query2")
 
       data = request.json
 
       print("DATA :" + str(request.data))
       print("JSON :" + str(data))
-#      print("   ID:" + str(data.id))
-#      print("   ID       :" + str(data["id"]))
-#      print(" MODEL      :" + str(data["model"]))
-#      print(" TEMPERATURE:" + str(data["temperature"]))
-#      print(" TOP P      :" + str(data["topP"]))
-#      print(" MAX TOKENS :" + str(data["maxTokenCount"]))
+      print(" MODEL      :" + str(data["model"]))
+      print(" TEMPERATURE:" + str(data["temperature"]))
+      print(" TOP P      :" + str(data["topP"]))
+      print(" MAX TOKENS :" + str(data["maxTokenCount"]))
+      print(" WORKSPACE:" + str(data["workspace"]))
 
       llm = get_llm(data["model"], data["temperature"], data["topP"], data["maxTokenCount"])
 
-      if os.path.exists(FAISS_INDEX):
-         ebeddings_db = FAISS.load_local(FAISS_INDEX, embeddings=EMBEDDINGS, allow_dangerous_deserialization=True)
+      #uuid = "12321-23423-24234"
+      uuid = data["workspace"]
+      faiss_idx = "/".join([FAISS_INDEX, uuid])
+      #if os.path.exists(FAISS_INDEX):
+      if os.path.exists(faiss_idx):
+         ebeddings_db = FAISS.load_local(faiss_idx, embeddings=EMBEDDINGS, allow_dangerous_deserialization=True)
          print("Retrieved")
          #print("Embeddings DB:" + str(ebeddings_db))
          retriever = ebeddings_db.as_retriever()
@@ -100,11 +114,21 @@ def create_app(test_config=None):
 
       return jsonify({"error": "No Data generated"}), 400
 
-   #@app.route('/upload', methods=['GET', 'POST'])
+   #################################################################################
+   #
+   # Receives the file
+   #
+   #################################################################################
    @app.post('/upload')
    def upload_file():
       print("This is an upload")
       print("File:" + str(request.files))
+
+      uuid = uuid4()
+      print("UUID:" + str(uuid))
+
+      ################## USED FOR TESTING TO SAVE AWS CALLS
+#      return jsonify({"id": uuid}), 200
 
       if 'file' not in request.files:
          return jsonify({"error": "No file part"}), 400
@@ -114,16 +138,14 @@ def create_app(test_config=None):
       if f.filename == '':
          return jsonify({"error": "No selected file"}), 400
     
-      if f and is_word_doc(f.filename):
+      if f and is_doc_of_type(f.filename, ALLOWED_WORD_EXTENSIONS):
          print("File is Word Doc!")
-
          document = process_word_file(f)
 
-         split_encode_and_store_file(document, f.filename)
+         split_encode_and_store_file(document, f.filename, uuid)
 
-         #setup_vector_store(split_docs)
-
-         return jsonify({"content": [doc.page_content for doc in document]}), 200
+         #return jsonify({"content": [doc.page_content for doc in document]}), 200
+         return jsonify({"id": uuid}), 200
     
       return jsonify({"error": "Invalid file type"}), 400
 
@@ -131,7 +153,7 @@ def create_app(test_config=None):
 
 #################################################################################
 #
-# Loads the word file
+# Gets the LLM
 #
 #################################################################################
 def get_llm(model, temperature, top_p, max_token_count):
@@ -140,6 +162,18 @@ def get_llm(model, temperature, top_p, max_token_count):
    print(" TEMPERATURE:" + str(temperature))
    print(" TOP P      :" + str(top_p))
    print(" MAX TOKENS :" + str(max_token_count))
+         
+   detail_names = MODEL_DETAILS[model]
+
+   return ChatBedrock (
+      model_id = model,
+      model_kwargs={
+         detail_names[TEMPERATURE_IDX]: temperature,
+         detail_names[MAX_TOKENS_IDX]: max_token_count,
+         detail_names[TOP_P_IDX]: top_p
+      }
+   )
+
 
 #   return ChatBedrock(
 #      #model_id ="amazon.titan-text-express-v1",
@@ -151,14 +185,14 @@ def get_llm(model, temperature, top_p, max_token_count):
 #      }
 #   )
 
-   return ChatBedrock(
-      model_id = model,
-      model_kwargs={
-         "temperature":temperature,
-         "max_tokens": max_token_count,
-         "top_p": top_p
-      }
-   )
+#   return ChatBedrock(
+#      model_id = model,
+#      model_kwargs={
+#         "temperature":temperature,
+#         "max_tokens": max_token_count,
+#         "top_p": top_p
+#      }
+#   )
 
 #################################################################################
 #
@@ -184,7 +218,7 @@ def process_word_file(f):
 # Splits the file and stores in the vector store in an encoded format
 #
 #################################################################################
-def split_encode_and_store_file(document, filename):
+def split_encode_and_store_file(document, filename, uuid):
    """Load Word File"""
    print("Spliting:" + filename)
 
@@ -199,7 +233,10 @@ def split_encode_and_store_file(document, filename):
       EMBEDDINGS,
    )
    # Save the vector store locally
-   vector_store.save_local(FAISS_INDEX)
+
+   faiss_idx = "/".join([FAISS_INDEX, str(uuid)])
+   #vector_store.save_local(FAISS_INDEX)
+   vector_store.save_local(faiss_idx)
 
    print(vector_store.index.ntotal)
 
@@ -224,7 +261,6 @@ def send_query(llm, input_text, retriever):
    print("Chain:" + str(retrieval_chain))
    return retrieval_chain.invoke({"input": input_text})
 
-
 #################################################################################
 #
 # Creates the memory for context
@@ -234,21 +270,21 @@ def create_memory(llm):
    #keeps summary of previous messages, max token limit forces flushing of old data
    return ConversationSummaryBufferMemory(llm=llm, max_token_limit=256) 
 
-
 #################################################################################
 #
 # Checks the file is a word file
 #
 #################################################################################
-def is_word_doc(filename):
-    print("checking file type:" + filename)
-    ALLOWED_EXTENSIONS = {'docx'}
+#def is_word_doc(filename):
+#    print("checking file type:" + filename)
+#    ALLOWED_EXTENSIONS = {'docx'}
+#
+#    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-#    print("1:" + str(filename.rsplit('.', 1)))
-#    print("2:" + str(filename.rsplit('.', 1)[1]))
-#    print("3:" + str(filename.rsplit('.', 1)[1].lower()))
-#    print("4:" + str('.' in filename))
-#    print("5:" + str(filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS))
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+def is_doc_of_type(filename, allowed_suffixes):
+    print("checking file type:" + filename)
+    #ALLOWED_EXTENSIONS = {'docx'}
+
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_suffixes
 
 
