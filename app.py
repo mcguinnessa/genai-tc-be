@@ -69,12 +69,45 @@ def create_app(test_config=None):
 
    #################################################################################
    #
+   # Returns a list of the workspaces
+   #
+   #################################################################################
+   @app.get("/workspaces")
+   def list_workspaces():
+      print("This will list the workspaces")
+      #faiss_idx = "/".join([FAISS_INDEX, uuid])
+
+      rc = {}
+      workspaces = []
+      for fn in os.listdir(FAISS_INDEX):
+         print("Files:" + str(fn))
+         ws = {}
+         path = os.path.join(FAISS_INDEX, fn)
+         if os.path.isdir(path):
+            for id in os.listdir(path):
+               print("Folder:" + str(id)) 
+               ws["filename"] = fn
+               ws["id"] = id
+            workspaces.append(ws)
+
+      rc["workspaces"] = workspaces
+        
+      return jsonify(rc), 200
+          
+      
+
+      #files = [f for f in os.listdir(FAISS_INDEX) if os.path.isdir(os.path.join(FAISS_INDEX, f))]
+      #print("Files:" + str(files))
+
+
+   #################################################################################
+   #
    # Generate the test cases
    #
    #################################################################################
    @app.post("/generate")
    def generate():
-      print("This is a query2")
+      print("This is a query")
 
       data = request.json
 
@@ -84,13 +117,16 @@ def create_app(test_config=None):
       print(" TEMPERATURE:" + str(data["temperature"]))
       print(" TOP P      :" + str(data["topP"]))
       print(" MAX TOKENS :" + str(data["maxTokenCount"]))
-      print(" WORKSPACE:" + str(data["workspace"]))
+      print("   WORKSPACE:" + str(data["workspace"]))
+      print("    FILENAME:" + str(data["filename"]))
 
       llm = get_llm(data["model"], data["temperature"], data["topP"], data["maxTokenCount"])
 
       #uuid = "12321-23423-24234"
       uuid = data["workspace"]
-      faiss_idx = "/".join([FAISS_INDEX, uuid])
+      #faiss_idx = "/".join([FAISS_INDEX, uuid])
+      faiss_idx = get_embedding_by_name_and_ws(str(data["filename"]), uuid)
+
       #if os.path.exists(FAISS_INDEX):
       if os.path.exists(faiss_idx):
          ebeddings_db = FAISS.load_local(faiss_idx, embeddings=EMBEDDINGS, allow_dangerous_deserialization=True)
@@ -137,17 +173,25 @@ def create_app(test_config=None):
     
       if f.filename == '':
          return jsonify({"error": "No selected file"}), 400
-    
+
+      temp_file_path = os.path.join('/tmp', f.filename + ".tmp")
+      f.save(temp_file_path)
+   
+      document = None 
       if f and is_doc_of_type(f.filename, ALLOWED_WORD_EXTENSIONS):
          print("File is Word Doc!")
-         document = process_word_file(f)
+         document = process_word_file(temp_file_path)
+      else:
+         return jsonify({"error": "Invalid file type"}), 400
 
-         split_encode_and_store_file(document, f.filename, uuid)
+      # Clean up the temporary file
+      #os.remove(temp_file_path)
 
-         #return jsonify({"content": [doc.page_content for doc in document]}), 200
-         return jsonify({"id": uuid}), 200
+      split_encode_and_store_file(document, f.filename, uuid)
+
+      #return jsonify({"content": [doc.page_content for doc in document]}), 200
+      return jsonify({"id": uuid}), 200
     
-      return jsonify({"error": "Invalid file type"}), 400
 
    return app
 
@@ -199,18 +243,13 @@ def get_llm(model, temperature, top_p, max_token_count):
 # Loads the word file
 #
 #################################################################################
-def process_word_file(f):
+def process_word_file(fullpath):
    """Load Word File"""
-   temp_file_path = os.path.join('/tmp', f.filename + ".tmp")
-   f.save(temp_file_path)
 
-   loader = Docx2txtLoader(temp_file_path)
-
+   loader = Docx2txtLoader(fullpath)
    doc = loader.load()
 
-   # Clean up the temporary file
-   #os.remove(temp_file_path)
-
+#   return Docx2txtLoader(fullpath).load()
    return doc
 
 #################################################################################
@@ -223,23 +262,34 @@ def split_encode_and_store_file(document, filename, uuid):
    print("Spliting:" + filename)
 
    #split into chunks of 1500 characters each, with an overlap of 150 characters between adjacent chunks.
-   splitter = RecursiveCharacterTextSplitter(chunk_size = 1500, chunk_overlap = 150)
+   splitter = RecursiveCharacterTextSplitter(chunk_size = 2500, chunk_overlap = 150)
    split_docs = splitter.create_documents([datum.page_content for datum in document])
    print("Split:" + filename)
 
    # Create a vector store using the documents and the embeddings
    vector_store = FAISS.from_documents(
-      document,
+      split_docs,
       EMBEDDINGS,
    )
    # Save the vector store locally
 
-   faiss_idx = "/".join([FAISS_INDEX, str(uuid)])
+#   faiss_idx = "/".join([FAISS_INDEX, filename, str(uuid)])
+#   def get_embedding_by_name_and_ws(filename, uuid):
+   faiss_idx = get_embedding_by_name_and_ws(filename, uuid)
+
    #vector_store.save_local(FAISS_INDEX)
    vector_store.save_local(faiss_idx)
 
    print(vector_store.index.ntotal)
 
+
+#################################################################################
+#
+# Gets the name of the FAISS index from the name and workspace
+#
+#################################################################################
+def get_embedding_by_name_and_ws(filename, uuid):
+   return "/".join([FAISS_INDEX, filename, str(uuid)])
 
 #################################################################################
 #
@@ -266,9 +316,9 @@ def send_query(llm, input_text, retriever):
 # Creates the memory for context
 #
 #################################################################################
-def create_memory(llm):
-   #keeps summary of previous messages, max token limit forces flushing of old data
-   return ConversationSummaryBufferMemory(llm=llm, max_token_limit=256) 
+#def create_memory(llm):
+#   #keeps summary of previous messages, max token limit forces flushing of old data
+#   return ConversationSummaryBufferMemory(llm=llm, max_token_limit=256) 
 
 #################################################################################
 #
