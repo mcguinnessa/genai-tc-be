@@ -79,22 +79,26 @@ def create_app(test_config=None):
 
       rc = {}
       workspaces = []
-      for fn in os.listdir(FAISS_INDEX):
-         print("Files:" + str(fn))
-         ws = {}
-         path = os.path.join(FAISS_INDEX, fn)
-         if os.path.isdir(path):
-            for id in os.listdir(path):
-               print("Folder:" + str(id)) 
-               ws["filename"] = fn
-               ws["id"] = id
-            workspaces.append(ws)
+
+      if os.path.exists(FAISS_INDEX):
+ 
+         for fn in os.listdir(FAISS_INDEX):
+            print("Files:" + str(fn))
+            ws = {}
+            path = os.path.join(FAISS_INDEX, fn)
+            if os.path.isdir(path):
+               for id in os.listdir(path):
+                  print("Folder:" + str(id)) 
+                  ws["filename"] = fn
+                  ws["id"] = id
+               workspaces.append(ws)
+      else:
+         print(FAISS_INDEX + " does not exist")
 
       rc["workspaces"] = workspaces
         
       return jsonify(rc), 200
           
-      
 
       #files = [f for f in os.listdir(FAISS_INDEX) if os.path.isdir(os.path.join(FAISS_INDEX, f))]
       #print("Files:" + str(files))
