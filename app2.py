@@ -2,63 +2,42 @@
 import os
 from uuid import uuid4
 
-from session import Session
-
 #Flask Imports
 from flask import Flask
 from flask import request
 from flask import jsonify
 
 #AI Imports
-#from langchain_aws import ChatBedrock
-#from langchain.llms import Bedrock
+from langchain_aws import ChatBedrock
 from langchain_community.document_loaders import TextLoader
 from langchain_community.document_loaders import Docx2txtLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores.faiss import FAISS
 from langchain_community.embeddings.bedrock import BedrockEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
-#from langchain.memory import ConversationSummaryBufferMemory
-#from langchain.memory import ConversationBufferMemory
-#from langchain.chains.combine_documents import create_stuff_documents_chain
-#from langchain.chains import create_history_aware_retriever, create_retrieval_chain
-
-#from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-#from langchain_core.chat_history import BaseChatMessageHistory
-#from langchain_core.runnables.history import RunnableWithMessageHistory
-#from langchain_community.chat_message_histories import ChatMessageHistory
-
+from langchain.memory import ConversationSummaryBufferMemory
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain.chains import create_retrieval_chain
 
 
 #AWS Imports
 import boto3
 
-#TEMPERATURE_IDX = 0
-#MAX_TOKENS_IDX  = 1
-#TOP_P_IDX       = 2
-#MODEL_DETAILS = {"amazon.titan-text-express-v1": ["temperature", "maxTokenCount", "topP"], 
-#                 "mistral.mixtral-8x7b-instruct-v0:1": ["temperature", "max_tokens", "top_p"] }
+TEMPERATURE_IDX = 0
+MAX_TOKENS_IDX  = 1
+TOP_P_IDX       = 2
+MODEL_DETAILS = {"amazon.titan-text-express-v1": ["temperature", "maxTokenCount", "topP"], 
+                 "mistral.mixtral-8x7b-instruct-v0:1": ["temperature", "max_tokens", "top_p"] }
 
-#TC_DEFINITION = """A Test Case is defined as having the following fields:
-#
-#Number: abbreviated to No., and is the number of the test case in the table or document. This should start from one.
-#Test Name: A useful short description of the test case.
-#Description: A summary of the test case.
-#ID: An alphanumeric identifier, unique to the test and derived from the element under test and the number field. Must be a maximum of 7 characters. Can include _ or - characters.
-#Pre-Conditions: Describes the preconditions needed for the tests to be executed.
-#Steps: This is a series of at least 3 steps, more if needed, that clearly describes how to execute the test case. Each step shall be numbered. The steps should include the following: Any parameters that need to be set or changed and what protocols will be used; any user interfaces the tester must use in order to carry out the instructions in the test step; any connectivity actions involved in the step.
-#Expected Results: This describes the expected outcomes for each of the steps itemised in Test Steps, including any values that can be validated or any expected errors that will occur."""
+TC_DEFINITION = """A Test Case is defined as having the following fields:
 
-
-
-
-G_client = boto3.client('bedrock', region_name='eu-west-2')  # Replace with your AWS region
-G_embedding_model = BedrockEmbeddings(client=G_client)
-#G_vector_store = FAISS(G_embedding_model)
-#G_conversation_memory = ConversationBufferMemory()
-
-
-
+Number: abbreviated to No., and is the number of the test case in the table or document. This should start from one.
+Test Name: A useful short description of the test case.
+Description: A summary of the test case.
+ID: An alphanumeric identifier, unique to the test and derived from the element under test and the number field. Must be a maximum of 7 characters. Can include _ or - characters.
+Pre-Conditions: Describes the preconditions needed for the tests to be executed.
+Steps: This is a series of at least 3 steps, more if needed, that clearly describes how to execute the test case. Each step shall be numbered. The steps should include the following: Any parameters that need to be set or changed and what protocols will be used; any user interfaces the tester must use in order to carry out the instructions in the test step; any connectivity actions involved in the step.
+Expected Results: This describes the expected outcomes for each of the steps itemised in Test Steps, including any values that can be validated or any expected errors that will occur."""
 
 
 EMBEDDINGS_MODEL = "amazon.titan-embed-text-v2:0"
@@ -74,8 +53,6 @@ def create_app(test_config=None):
    """Create the App"""
    print("Creating the App")
    app = Flask(__name__)
-
-   my_sessions = {}
 
    @app.route("/")
    def hello_world():
@@ -137,8 +114,6 @@ def create_app(test_config=None):
 
       data = request.json
 
-      session_id = data["sessionId"]
-
       print("DATA :" + str(request.data))
       print("JSON :" + str(data))
       print(" MODEL      :" + str(data["model"]))
@@ -147,59 +122,13 @@ def create_app(test_config=None):
       print(" MAX TOKENS :" + str(data["maxTokenCount"]))
       print("   WORKSPACE:" + str(data["workspace"]))
       print("    FILENAME:" + str(data["filename"]))
-      print("     SESSION:" + str(session_id))
 
-      resp = None
-      if session_id in my_sessions.keys():
-         print("Session exists:" + str(session_id))
-         session = my_sessions[session_id]
-         resp = session.send_query(data["prompt"])
-      else:
-         print("Creating new Session:" + str(session_id))
  
-#      #llm = Bedrock(client=G_client, model_id='mistral.mixtral-8x7b-instruct-v0:1')  # Replace with your model ID
-#      llm = get_llm(data["model"], data["temperature"], data["topP"], data["maxTokenCount"])
+     client = boto3.client('bedrock', region_name='eu-west-2')  # Replace with your AWS region
+     embedding_model = BedrockEmbeddings(client=client)
+     llm = Bedrock(client=client, model_id='bedrock-model-id')  # Replace with your model ID
 
-         ws_id = data["workspace"]
-         faiss_idx = get_embedding_idx_by_name_and_ws(str(data["filename"]), ws_id)
-
-         #if os.path.exists(FAISS_INDEX):
-         if os.path.exists(faiss_idx):
-            ebeddings_db = FAISS.load_local(faiss_idx, embeddings=EMBEDDINGS, allow_dangerous_deserialization=True)
-            print("Retrieved")
-            #print("Embeddings DB:" + str(ebeddings_db))
-            retriever = ebeddings_db.as_retriever()
-
-            #print("Retriver:" + str(retriever))
-            session = Session(session_id, retriever, data["model"], data["temperature"], data["topP"], data["maxTokenCount"])
-            my_sessions[session_id] = session
-   
-            resp = session.send_query(data["prompt"])
-            #resp = session.send_query(data["prompt"], retriever)
-            #resp = send_query(llm, data["prompt"], retriever)
-            print("QRESP:" + str(resp))
-            print("\n")
-            answer = resp['answer']
-            print("RESP:" + str(answer))
-            return jsonify({"answer": answer}), 200
-
-         else:
-            return jsonify({"error": "No File uploaded"}), 400
-
-      if "answer" in resp:
-         print("QRESP:" + str(resp))
-         print("\n")
-         answer = resp['answer']
-         print("RESP:" + str(answer))
-         return jsonify({"answer": answer}), 200
-      else:
-         return jsonify({"error": "No Data generated"}), 400
-
-
-
-
-
-
+     vector_store = FAISS(embedding_model)
 
 
 
@@ -209,7 +138,7 @@ def create_app(test_config=None):
    #
    #################################################################################
    @app.post("/generate2")
-   def generate2():
+   def generate():
       print("This is a query2")
 
       data = request.json
@@ -228,7 +157,7 @@ def create_app(test_config=None):
       #uuid = "12321-23423-24234"
       uuid = data["workspace"]
       #faiss_idx = "/".join([FAISS_INDEX, uuid])
-      faiss_idx = get_embedding_idx_by_name_and_ws(str(data["filename"]), uuid)
+      faiss_idx = get_embedding_by_name_and_ws(str(data["filename"]), uuid)
 
       #if os.path.exists(FAISS_INDEX):
       if os.path.exists(faiss_idx):
@@ -292,8 +221,6 @@ def create_app(test_config=None):
 
       split_encode_and_store_file(document, f.filename, uuid)
 
- 
-
       #return jsonify({"content": [doc.page_content for doc in document]}), 200
       return jsonify({"id": uuid}), 200
     
@@ -305,23 +232,23 @@ def create_app(test_config=None):
 # Gets the LLM
 #
 #################################################################################
-#def get_llm(model, temperature, top_p, max_token_count):
-#
-#   print(" MODEL      :" + str(model))
-#   print(" TEMPERATURE:" + str(temperature))
-#   print(" TOP P      :" + str(top_p))
-#   print(" MAX TOKENS :" + str(max_token_count))
-#         
-#   detail_names = MODEL_DETAILS[model]
-#
-#   return ChatBedrock (
-#      model_id = model,
-#      model_kwargs={
-#         detail_names[TEMPERATURE_IDX]: temperature,
-#         detail_names[MAX_TOKENS_IDX]: max_token_count,
-#         detail_names[TOP_P_IDX]: top_p
-#      }
-#   )
+def get_llm(model, temperature, top_p, max_token_count):
+
+   print(" MODEL      :" + str(model))
+   print(" TEMPERATURE:" + str(temperature))
+   print(" TOP P      :" + str(top_p))
+   print(" MAX TOKENS :" + str(max_token_count))
+         
+   detail_names = MODEL_DETAILS[model]
+
+   return ChatBedrock (
+      model_id = model,
+      model_kwargs={
+         detail_names[TEMPERATURE_IDX]: temperature,
+         detail_names[MAX_TOKENS_IDX]: max_token_count,
+         detail_names[TOP_P_IDX]: top_p
+      }
+   )
 
 
 #   return ChatBedrock(
@@ -367,19 +294,9 @@ def split_encode_and_store_file(document, filename, uuid):
    print("Spliting:" + filename)
 
    #split into chunks of 1500 characters each, with an overlap of 150 characters between adjacent chunks.
-   splitter = RecursiveCharacterTextSplitter(chunk_size = 1500, chunk_overlap = 150)
-   split_docs = splitter.split_documents(document)
-
-
-#   split_docs = splitter.create_documents([datum.page_content for datum in document])
+   splitter = RecursiveCharacterTextSplitter(chunk_size = 2500, chunk_overlap = 150)
+   split_docs = splitter.create_documents([datum.page_content for datum in document])
    print("Split:" + filename)
-
-#   G_vector_store.add_documents(split_docs)
-#   faiss_idx = get_embedding_idx_by_name_and_ws(filename, uuid)
-#   vector_store.save_local(faiss_idx)
-#
-#   print(vector_store.index.ntotal)
-#
 
    # Create a vector store using the documents and the embeddings
    vector_store = FAISS.from_documents(
@@ -389,8 +306,8 @@ def split_encode_and_store_file(document, filename, uuid):
    # Save the vector store locally
 
 #   faiss_idx = "/".join([FAISS_INDEX, filename, str(uuid)])
-##   def get_embedding_by_name_and_ws(filename, uuid):
-   faiss_idx = get_embedding_idx_by_name_and_ws(filename, uuid)
+#   def get_embedding_by_name_and_ws(filename, uuid):
+   faiss_idx = get_embedding_by_name_and_ws(filename, uuid)
 
    #vector_store.save_local(FAISS_INDEX)
    vector_store.save_local(faiss_idx)
@@ -398,16 +315,12 @@ def split_encode_and_store_file(document, filename, uuid):
    print(vector_store.index.ntotal)
 
 
-
-#################################################################################
-
-
 #################################################################################
 #
 # Gets the name of the FAISS index from the name and workspace
 #
 #################################################################################
-def get_embedding_idx_by_name_and_ws(filename, uuid):
+def get_embedding_by_name_and_ws(filename, uuid):
    return "/".join([FAISS_INDEX, filename, str(uuid)])
 
 #################################################################################
@@ -415,73 +328,20 @@ def get_embedding_idx_by_name_and_ws(filename, uuid):
 # Splits the file and stores in the vector store in an encoded format
 #
 #################################################################################
-#def send_query(llm, input_text, retriever):
-#
-#   prompt = ChatPromptTemplate.from_template("""Answer the following question based only on the provided context:
-#      <context>
-#      {context}
-#      </context>"""+
-#      TC_DEFINITION + """
-#      Question: {input}""")
-#
-#   ### Contextualize question ###
-#   contextualize_q_system_prompt = (
-#      "Given a chat history and the latest user question "
-#      "which might reference context in the chat history, "
-#      "formulate a standalone question which can be understood "
-#      "without the chat history. Do NOT answer the question, "
-#      "just reformulate it if needed and otherwise return it as is."
-#   )
-# 
-#   contextualize_q_prompt = ChatPromptTemplate.from_messages(
-#      [
-#         ("system", contextualize_q_system_prompt),
-#         MessagesPlaceholder("chat_history"),
-#         ("human", "{input}"),
-#      ]
-#   )
-#
-#   history_aware_retriever = create_history_aware_retriever(
-#      llm=llm,
-#      retriever=retriever,
-#      prompt=contextualize_q_prompt
-#      
-#      #memory=G_conversation_memory
-#    )
-#
-#
-#   history_chain = create_stuff_documents_chain(llm, prompt)
-#
-#   rag_chain = create_retrieval_chain(history_aware_retriever, history_chain)
-#   #retrieval_chain = create_retrieval_chain(llm, retriever, document_chain)
-#   #retrieval_chain = create_retrieval_chain(llm=llm, retriever=retriever, memory=G_conversation_memory)
-#   #print("Chain:" + str(retrieval_chain))
-#   print("Chain:" + str(rag_chain))
-#   #return retrieval_chain.invoke({"input": input_text})
-#   #return rag_chain.run({"input": input_text})
-#
-#
-#   conversational_rag_chain = RunnableWithMessageHistory(
-#      rag_chain,
-#      get_session_history,
-#      input_messages_key="input",
-#      history_messages_key="chat_history",
-#      output_messages_key="answer",
-#   )
-#
-#   #conversational_rag_chain.invoke( {"input": input_text}, config={ "configurable": {"session_id": "abc123"} },)["answer"]
-#   resp = conversational_rag_chain.invoke( {"input": input_text}, config={ "configurable": {"session_id": "abc123"} })
-#   print("Resp:" + str(resp))
-#   return resp
-#   
+def send_query(llm, input_text, retriever):
 
+   prompt = ChatPromptTemplate.from_template("""Answer the following question based only on the provided context:
+      <context>
+      {context}
+      </context>"""+
+      TC_DEFINITION + """
+      Question: {input}""")
 
-#G_store = {}
-#
-#def get_session_history(session_id: str) -> BaseChatMessageHistory:
-#    if session_id not in G_store:
-#        G_store[session_id] = ChatMessageHistory()
-#    return G_store[session_id]
+   document_chain = create_stuff_documents_chain(llm, prompt)
+
+   retrieval_chain = create_retrieval_chain(retriever, document_chain)
+   print("Chain:" + str(retrieval_chain))
+   return retrieval_chain.invoke({"input": input_text})
 
 #################################################################################
 #
