@@ -52,8 +52,8 @@ import boto3
 
 
 
-G_client = boto3.client('bedrock', region_name='eu-west-2')  # Replace with your AWS region
-G_embedding_model = BedrockEmbeddings(client=G_client)
+#G_client = boto3.client('bedrock', region_name='eu-west-2')  # Replace with your AWS region
+#G_embedding_model = BedrockEmbeddings(client=G_client)
 #G_vector_store = FAISS(G_embedding_model)
 #G_conversation_memory = ConversationBufferMemory()
 
@@ -64,6 +64,7 @@ G_embedding_model = BedrockEmbeddings(client=G_client)
 EMBEDDINGS_MODEL = "amazon.titan-embed-text-v2:0"
 FAISS_INDEX = "faiss_db_index"
 
+#BEDROCK_RT = boto3.client(service_name='bedrock-runtime', region_name='eu-west-2')
 BEDROCK_RT = boto3.client(service_name='bedrock-runtime')
 EMBEDDINGS = BedrockEmbeddings(model_id=EMBEDDINGS_MODEL, client=BEDROCK_RT)
 
