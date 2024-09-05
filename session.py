@@ -9,8 +9,6 @@ from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_community.chat_message_histories import ChatMessageHistory
 
-#from langchain.memory import ConversationSummaryBufferMemory
-#from langchain.memory import ConversationBufferMemory
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 
@@ -99,11 +97,6 @@ class Session():
       )
 
 
-
-
-      #self.conversation_memory = ConversationBufferMemory()
-
-
    #################################################################################
    #
    # Gets the LLM
@@ -134,41 +127,6 @@ class Session():
    #################################################################################
    def send_query(self, input_text):
 
-#      prompt = ChatPromptTemplate.from_template("""Answer the following question based only on the provided context:
-#         <context>
-#         {context}
-#         </context>"""+
-#         TC_DEFINITION + """
-#         Question: {input}""")
-#
-#      contextualize_q_prompt = ChatPromptTemplate.from_messages(
-#         [
-#            ("system", contextualize_q_system_prompt),
-#            MessagesPlaceholder("chat_history"),
-#            ("human", "{input}"),
-#         ]
-#      )
-
-#      history_aware_retriever = create_history_aware_retriever(
-#         llm=self.llm,
-#         retriever=self.retriever,
-#         prompt=CONTEXTUALISE_Q_PROMPT
-#       )
-
-
-
-#      rag_chain = create_retrieval_chain(history_aware_retriever, history_chain)
-#      print("Chain:" + str(rag_chain))
-
-
-#      conversational_rag_chain = RunnableWithMessageHistory(
-#         self.rag_chain,
-#         self.get_session_history,
-#         input_messages_key="input",
-#         history_messages_key="chat_history",
-#         output_messages_key="answer",
-#      )
-
       resp = self.conversational_rag_chain.invoke( {"input": input_text}, config={ "configurable": {"session_id": self.session_id} })
       print("Resp:" + str(resp))
       return resp
@@ -183,26 +141,5 @@ class Session():
        if session_id not in self.store:
            self.store[session_id] = ChatMessageHistory()
        return self.store[session_id]
-
-
-############################################################
-#
-# 
-#
-############################################################
-#   def send_query(self, model, provider, prompt, session_id, workspace_id, document_id, temperature, topp, max_tokens):
-#
-#      return self.send_query_impl(model, provider, prompt, session_id, workspace_id, document_id, temperature, topp, max_tokens)
-#
-#   @abstractmethod
-#   def send_query_impl(self, model, provider, prompt, session_id, workspace_id, document_id, temperature, topp, max_tokens):
-#      pass
-#
-##   @abstractmethod
-#   def upload_file(self, filename):
-#      pass
-#
-#   def get_existing_workspaces(self):
-#      pass
 
 
